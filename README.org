@@ -1,0 +1,87 @@
+* =hotpatching= - bringing runtime function patching to Nim
+
+This is a straight up port of this article:
+
+https://nullprogram.com/blog/2016/03/31/
+
+and not really to be taken as a serious option to patch arbitrary
+functions at runtime (because likely it'll fail spectacularly when it
+matters most). To understand how it works, probably best to read the article.
+
+It's a fun, platform dependent, linux only way to patch any (well,
+probably not, but all I tried) functions by a custom function. I'd
+probably just make sure the signatures match (otherwise who knows what
+happens).
+
+The API just provides a single =template=
+#+begin_src nim
+template hotpatch*(target, replacement: typed): untyped
+#+end_src
+The first argument is the symbol of a function to be replaced and the
+second the function we replace it by.
+
+** Example
+
+A simple example that shows we can patch:
+1. a user function by another user function
+2. a stdlib function by a user function
+3. a user function calling a stdlib function, in which we patch the
+   stdlib function and observe the effect on the user function
+
+*** Patching a user function   
+#+begin_src nim :results code
+import hotpatching
+
+proc foo(x: int) =
+  echo "You win ", x, "€"
+proc bar(x: int) =
+  echo "You owe me ", x, "€"
+
+foo(100)  
+hotpatch(foo, bar)
+foo(100)
+#+end_src
+
+which prints the following when run:
+#+begin_src 
+You win 100€
+You owe me 100€
+#+end_src
+
+*** Patching a =stdlib= function
+
+#+begin_src nim :results code
+import hotpatching
+
+import strutils # we will patch `parseInt`
+proc myParse(s: string): int = 42
+hotpatch(parseInt, myParse)
+
+echo "5".parseInt()
+#+end_src
+
+which gives the expected answer:
+#+begin_src
+42
+#+end_src
+
+*** Patching a user function calling a =stdlib= function
+
+#+begin_src nim :results code
+import hotpatching
+
+# define our function that uses the stdlib (note: this can also be
+# exported and defined in a different file!)
+import strutils
+proc parseAndMultiply(s: string, x: int): int =
+  result = s.parseInt * x
+
+proc myParse(s: string): int = 125
+hotpatch(parseInt, myParse)  
+echo parseAndMultiply("2", 5)
+#+end_src
+
+which obviously results in ~2*5 = 10~.. ehhhhh:
+#+begin_src nim
+625
+#+end_src
